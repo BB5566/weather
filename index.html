@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,7 +12,7 @@
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
-    <style></style>
+    
   </head>
 
   <body>
@@ -31,13 +31,7 @@
       </div>
     </div>
 
-    <!-- 載入bs5 js -->
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.7/js/bootstrap.bundle.min.js"
-      integrity="sha512-Tc0i+vRogmX4NN7tuLbQfBxa8JkfUSAxSFVzmU31nVdHyiHElPPy2cWfFacmCJKw0VqovrzKhdd2TSTMdAxp2g=="
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    ></script>
+  <!-- 本頁未使用 Bootstrap JS 元件，省略載入可減少流量與阻塞 -->
 
     <!-- 載入jquery（本頁用 jQuery 來呼叫 API 與更新畫面） -->
     <script
@@ -49,7 +43,7 @@
     <!-- 本機金鑰設定（請複製 config.example.js 為 config.local.js 並填入金鑰；此檔已在 .gitignore 中） -->
     <script src="config.local.js"></script>
     <script>
-      // 目標：用最簡單的 jQuery 寫法，自動擷取中央氣象署 JSON，整理後以「卡片」美化顯示
+      // 目標：自動擷取中央氣象署 JSON，整理後以「卡片」美化顯示
       // 重點：
       // 1) 使用 $.ajax 取得資料（非本地檔）
       // 2) 解析 records.location 陣列，取出 Wx/PoP/MinT/MaxT/CI 等欄位
