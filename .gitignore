@@ -1,4 +1,12 @@
-# 避免把機敏資訊（API 金鑰等）提交到 GitHub
+# 本機金鑰與設定（請勿提交）
+config.local.js
+pw.js
+
+# 常見忽略
+node_modules/
+dist/
+.DS_Store
+Thumbs.db# 避免把機敏資訊（API 金鑰等）提交到 GitHub
 config.local.js
 api.md
 # 常見環境變數檔
