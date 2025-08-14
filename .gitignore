@@ -1,0 +1,6 @@
+# 避免把機敏資訊（API 金鑰等）提交到 GitHub
+config.local.js
+api.md
+# 常見環境變數檔
+.env
+.env.*
