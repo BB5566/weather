@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,274 +12,796 @@
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
-    
+    <!-- DataTables for Bootstrap 5 -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css"
+    />
+    <!-- 移除 DataTables Responsive，改用 Bootstrap 的 .table-responsive -->
+
+    <!-- 現代字體（Noto Sans TC）提升中文字體質感 -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root{
+        --brand-primary: #1976D2;
+        --brand-accent: #E53935;
+        --muted: #6c757d;
+        --card-shadow: 0 6px 18px rgba(16,24,40,0.06);
+      }
+      body {
+        font-family: "Noto Sans TC", system-ui, -apple-system, Segoe UI, Roboto,
+          "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial,
+          "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+          "Noto Color Emoji", sans-serif;
+      }
+      /* KPI cards */
+      .kpi-row { display:flex; gap:12px; margin-bottom:12px; }
+      .kpi { flex:1; padding:12px; border-radius:8px; background:#fff; box-shadow:var(--card-shadow); }
+      .kpi .value { font-size:1.25rem; font-weight:700; color:var(--brand-primary); }
+      .kpi .label { font-size:0.85rem; color:var(--muted); }
+      /* mini chart visuals */
+      canvas[id^="miniChart-"]{ cursor:pointer; display:block; }
+      canvas[id^="miniChart-"]:focus{ outline:3px solid rgba(25,118,210,0.12); }
+      /* responsive: on small screens hide table and show card list */
+      .card-list { display:none; gap:12px; }
+      @media (max-width: 768px) {
+        .table-responsive { display:none !important; }
+        .card-list { display:flex; flex-direction:column; }
+      }
+      .weather-icon {
+        width: 24px;
+        height: 24px;
+        vertical-align: text-bottom;
+      }
+      .temp-range {
+        font-weight: 600;
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+        background-color: var(--bs-secondary-bg);
+      }
+      /* 黏性表頭與第一欄（於 .table-responsive 容器內生效） */
+      .table-responsive thead th.sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: var(--bs-body-bg);
+      }
+      .table-responsive thead th.sticky-col,
+      .table-responsive tbody td.sticky-col {
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        background: var(--bs-body-bg);
+      }
+      .table-responsive thead th.sticky-col {
+        z-index: 6;
+      }
+    </style>
   </head>
 
   <body>
-    <div class="container py-4">
-      <div class="mb-3" id="slot-wrapper" style="display: none">
-        <label for="slot-select" class="form-label mb-1">選擇時段</label>
-        <select id="slot-select" class="form-select form-select-sm"></select>
+    <div class="container mt-4">
+      <!-- 簡潔城市選擇：地區 + 城市 + 快速按鈕 -->
+      <div class="mb-3 d-flex align-items-center gap-2">
+        <label for="regionSelect" class="form-label visually-hidden"
+          >地區</label
+        >
+        <select id="regionSelect" class="form-select form-select-sm w-auto">
+          <option value="">全部地區</option>
+          <option value="north">北部</option>
+          <option value="central">中部</option>
+          <option value="south">南部</option>
+          <option value="east">東部</option>
+          <option value="islands">離島</option>
+        </select>
+
+        <label for="citySelect" class="form-label visually-hidden">城市</label>
+        <select id="citySelect" class="form-select form-select-sm w-auto">
+          <option value="">全部城市</option>
+        </select>
+
+        <div id="quickCityButtons" class="ms-3"></div>
       </div>
+      <div class="card shadow-sm border-0">
+        <div
+          class="card-header bg-body-tertiary d-flex align-items-center justify-content-between"
+        >
+          <h2 class="h5 mb-0">氣象預報 36 小時資料</h2>
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small"
+              >最後更新：<span id="lastUpdated">—</span></span
+            >
+            <button id="btnReload" class="btn btn-sm btn-primary">
+              更新資料
+            </button>
+          </div>
+        </div>
+        <!-- KPI summary -->
+        <div class="kpi-row">
+          <div class="kpi" id="kpiAvg">
+            <div class="value" id="kpiAvgValue">— °C</div>
+            <div class="label">全台平均溫度</div>
+          </div>
+          <div class="kpi" id="kpiHigh">
+            <div class="value" id="kpiHighValue">— °C</div>
+            <div class="label">今日最高</div>
+          </div>
+          <div class="kpi" id="kpiLow">
+            <div class="value" id="kpiLowValue">— °C</div>
+            <div class="label">今日最低</div>
+          </div>
+        </div>
+        <!-- 行動版卡片列表（窄螢幕顯示） -->
+        <div class="card-list" id="cardList"></div>
 
-      <!-- 狀態/錯誤訊息顯示 -->
-      <div id="status" aria-live="polite"></div>
-
-      <!-- 卡片網格：每個地區一張卡片，顯示天氣、溫度、降雨等（自動載入） -->
-      <div class="row g-3 mt-2" id="card-grid">
-        <div class="col-12 text-muted">資料載入中…</div>
+        <div class="card-body">
+          <div id="loading" class="d-none text-muted small mb-2">
+            <div
+              class="spinner-border spinner-border-sm text-primary"
+              role="status"
+            ></div>
+            <span class="ms-2">載入中…</span>
+          </div>
+          <!-- 溫度走勢圖（Chart.js） -->
+          <div class="mb-4">
+            <canvas id="tempChart" height="120" aria-label="溫度走勢圖" role="img"></canvas>
+          </div>
+          <div class="table-responsive">
+            <table
+              id="myTable"
+              class="table table-striped table-hover align-middle mb-0"
+            >
+              <thead class="table-light">
+                <tr>
+                  <th class="sticky-col sticky-top">城市</th>
+                  <th class="sticky-top">走勢</th>
+                  <th id="thRange1" class="sticky-top">0–12 小時</th>
+                  <th id="thRange2" class="sticky-top">12–24 小時</th>
+                  <th id="thRange3" class="sticky-top">24–36 小時</th>
+                </tr>
+              </thead>
+              <tbody id="myTbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
-  <!-- 本頁未使用 Bootstrap JS 元件，省略載入可減少流量與阻塞 -->
+    <!-- 載入bs5 js -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.7/js/bootstrap.bundle.min.js"
+      integrity="sha512-Tc0i+vRogmX4NN7tuLbQfBxa8JkfUSAxSFVzmU31nVdHyiHElPPy2cWfFacmCJKw0VqovrzKhdd2TSTMdAxp2g=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
 
-    <!-- 載入jquery（本頁用 jQuery 來呼叫 API 與更新畫面） -->
+    <!-- 載入jquery -->
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
       integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     ></script>
-    <!-- 本機金鑰設定（請複製 config.example.js 為 config.local.js 並填入金鑰；此檔已在 .gitignore 中） -->
-    <script src="config.local.js"></script>
-    <script>
-      // 目標：自動擷取中央氣象署 JSON，整理後以「卡片」美化顯示
-      // 重點：
-      // 1) 使用 $.ajax 取得資料（非本地檔）
-      // 2) 解析 records.location 陣列，取出 Wx/PoP/MinT/MaxT/CI 等欄位
-      // 3) 以 Bootstrap Card 呈現，並可切換 3 個時段
 
-      $(function () {
-        // 讀取本機未提交的 API URL（window.CONFIG 由 config.local.js 提供）
-        var API_URL = (window.CONFIG && window.CONFIG.API_URL) || '';
-        // 若未設定 URL，顯示指示並中止
-        if (!API_URL || /請填入/.test(API_URL)) {
-          $('#status').html('<div class="alert alert-warning py-2 mb-2">' +
-            '尚未設定 API URL。請將 <code>config.example.js</code> 複製為 <code>config.local.js</code>，並填入 <code>window.CONFIG.API_URL</code>（可包含金鑰的查詢參數）。此檔已被 <code>.gitignore</code> 忽略，不會上傳到 GitHub。' +
-          '</div>');
-          return;
-        }
-        var cached = null; // 暫存 API 回傳，切換時段時不用重抓
+    <!-- DataTables JS (需在 jQuery 之後) -->
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+    <!-- 已改用 Bootstrap .table-responsive，無需 DataTables Responsive JS -->
 
-        // 頁面載入即自動擷取（不需按鈕與成功提示）
-        autoFetch();
+    <!-- 載入pwd -->
+    <!-- .gitignore -->
+    <!-- /pw -->
+    <!-- /pw/pw.js -->
+    <!-- let pw = 'your password' -->
+    <script src="pw.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-        // 選擇時段後重畫卡片
-        $("#slot-select").on("change", function () {
-          renderCards();
-        });
+  <script>
+      $(document).ready(function () {
+        // jQuery 程式
+        var pwd = typeof pw !== "undefined" ? pw : "";
+        var $myTbody = $("#myTbody");
 
-        function autoFetch() {
-          // 清空狀態與卡片區
-          $("#status").empty();
-          $('#card-grid').html('<div class="col-12 text-muted">資料載入中…</div>');
-
-          $.ajax({
-            url: API_URL,
-            method: "GET",
-            dataType: "json",
-            timeout: 15000,
-          })
-            .done(function (data) {
-              cached = data;
-              // 1) 推斷 3 個時段標籤
-              var labels = inferSlots(cached);
-              // 2) 寫入下拉供切換
-              populateSlotSelect(labels);
-              // 3) 依目前時段渲染卡片
-              renderCards();
-            })
-            .fail(function (jqXHR, textStatus, errorThrown) {
-              var msg =
-                textStatus === "timeout"
-                  ? "請求逾時"
-                  : jqXHR.status
-                  ? "HTTP " + jqXHR.status + " " + jqXHR.statusText
-                  : errorThrown || textStatus;
-              showError("擷取失敗：" + msg + "（可能是 CORS 或網路問題）");
-            });
+        function getIconFolder(startTime) {
+          if (!startTime || startTime.length < 13) return "day";
+          var hh = parseInt(startTime.slice(11, 13), 10);
+          return hh >= 18 || hh < 6 ? "night" : "day";
         }
 
-        // 依資料推出 0~2 時段的標籤（startTime ~ endTime）
-        function inferSlots(data) {
+        // 地區對應表
+        var regionMap = {
+          north: [
+            "基隆市",
+            "新北市",
+            "臺北市",
+            "桃園市",
+            "新竹市",
+            "新竹縣",
+            "宜蘭縣",
+          ],
+          central: ["苗栗縣", "臺中市", "彰化縣", "南投縣", "雲林縣"],
+          south: ["嘉義市", "嘉義縣", "臺南市", "高雄市", "屏東縣"],
+          east: ["花蓮縣", "臺東縣"],
+          islands: ["澎湖縣", "金門縣", "連江縣"],
+        };
+
+        // 幫助函式：轉義正規表示式字元
+        function escapeRegex(str) {
+          return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+
+  var tempChart = null;
+  var miniCharts = {};
+  var locationMap = {};
+  var currentSelectedCity = null; // 當前在下拉選單選擇的城市
+
+        function createOrUpdateChart(labels, datasets) {
+          var ctx = document.getElementById("tempChart").getContext("2d");
+          if (tempChart) {
+            tempChart.data.labels = labels;
+            tempChart.data.datasets = datasets;
+            tempChart.update();
+            return;
+          }
+          tempChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: datasets,
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: {
+                mode: 'index',
+                intersect: false,
+              },
+              plugins: {
+                legend: { position: 'top' },
+                tooltip: { enabled: true }
+              },
+              scales: {
+                y: {
+                  title: { display: true, text: '溫度 (°C)' }
+                }
+              }
+            }
+          });
+        }
+
+        function buildChartDataFromLocation(location) {
+          // 回傳 labels 與 datasets（min/max）
+          var times = (location && location.weatherElement && location.weatherElement[2] && location.weatherElement[2].time) || [];
+          var labels = [];
+          var minTemps = [];
+          var maxTemps = [];
+          for (var i = 0; i < times.length; i++) {
+            var t = times[i];
+            labels.push((t && t.startTime) ? t.startTime.replace('T', ' ') : '');
+            var min = (t && t.parameter && t.parameter.parameterName) || null;
+            // 對應到 weatherElement[4] 的 max
+            var max = null;
+            try {
+              max = location.weatherElement[4].time[i].parameter.parameterName;
+            } catch (e) {
+              max = null;
+            }
+            minTemps.push(min !== null ? parseFloat(min) : null);
+            maxTemps.push(max !== null ? parseFloat(max) : null);
+          }
+
+          var datasets = [
+            {
+              label: '最低溫',
+              data: minTemps,
+              borderColor: 'rgba(54,162,235,1)',
+              backgroundColor: 'rgba(54,162,235,0.2)',
+              tension: 0.3,
+            },
+            {
+              label: '最高溫',
+              data: maxTemps,
+              borderColor: 'rgba(255,99,132,1)',
+              backgroundColor: 'rgba(255,99,132,0.2)',
+              tension: 0.3,
+            }
+          ];
+          return { labels: labels, datasets: datasets };
+        }
+
+        function buildAverageChartData(allData) {
+          var ref = allData[0] && allData[0].weatherElement && allData[0].weatherElement[2] && allData[0].weatherElement[2].time || [];
+          var avgLabels = [];
+          var avgMin = [];
+          var avgMax = [];
+          for (var i = 0; i < ref.length; i++) {
+            avgLabels.push((ref[i] && ref[i].startTime) ? ref[i].startTime.replace('T',' ') : '');
+            var sumMin = 0, sumMax = 0, cnt = 0;
+            for (var k = 0; k < allData.length; k++) {
+              try {
+                var mn = parseFloat(allData[k].weatherElement[2].time[i].parameter.parameterName);
+                var mx = parseFloat(allData[k].weatherElement[4].time[i].parameter.parameterName);
+                if (!isNaN(mn) && !isNaN(mx)) {
+                  sumMin += mn; sumMax += mx; cnt++;
+                }
+              } catch (e) {}
+            }
+            avgMin.push(cnt>0 ? +(sumMin/cnt).toFixed(1) : null);
+            avgMax.push(cnt>0 ? +(sumMax/cnt).toFixed(1) : null);
+          }
+          var datasets = [
+            { label: '最低溫', data: avgMin, borderColor: 'rgba(54,162,235,1)', backgroundColor: 'rgba(54,162,235,0.2)', tension:0.3 },
+            { label: '最高溫', data: avgMax, borderColor: 'rgba(255,99,132,1)', backgroundColor: 'rgba(255,99,132,0.2)', tension:0.3 }
+          ];
+          return { labels: avgLabels, datasets: datasets };
+        }
+
+        function updateMainChartForCity(cityName, allData) {
+          // cityName falsy => show average
+          if (!cityName) {
+            if (!allData || allData.length === 0) return;
+            var avg = buildAverageChartData(allData);
+            createOrUpdateChart(avg.labels, avg.datasets);
+            return;
+          }
+          var loc = locationMap[cityName];
+          if (loc) {
+            var cd = buildChartDataFromLocation(loc);
+            // 計算 y 範圍（讓圖表不會太貼邊）
+            var allValues = [].concat(cd.datasets[0].data || [], cd.datasets[1].data || []).filter(function(x){return x!==null});
+            var min = Math.min.apply(null, allValues);
+            var max = Math.max.apply(null, allValues);
+            if (!isFinite(min) || !isFinite(max)) {
+              createOrUpdateChart(cd.labels, cd.datasets);
+              return;
+            }
+            var pad = Math.max(1, Math.round((max - min) * 0.1));
+            // 更新 chart 並設置 y 軸限制
+            if (tempChart) {
+              tempChart.options.scales = tempChart.options.scales || {};
+              tempChart.options.scales.y = tempChart.options.scales.y || {};
+              tempChart.options.scales.y.min = Math.floor(min - pad);
+              tempChart.options.scales.y.max = Math.ceil(max + pad);
+            }
+            createOrUpdateChart(cd.labels, cd.datasets);
+          }
+        }
+
+        function loadData() {
+          $("#loading").removeClass("d-none");
+          // 銷毀先前的 mini charts（若有）以避免記憶體洩漏
           try {
-            var loc0 =
-              data &&
-              data.records &&
-              data.records.location &&
-              data.records.location[0];
-            var times =
-              (loc0 &&
-                loc0.weatherElement &&
-                loc0.weatherElement[0] &&
-                loc0.weatherElement[0].time) ||
-              [];
-            return times.map(function (t) {
-              return t.startTime + " ~ " + t.endTime;
-            });
+            for (var k in miniCharts) {
+              if (miniCharts[k] && typeof miniCharts[k].destroy === 'function') {
+                miniCharts[k].destroy();
+              }
+            }
           } catch (e) {
-            return [];
+            console.warn('銷毀 miniCharts 時發生錯誤', e);
           }
-        }
-
-        // 將時段寫入下拉，並顯示/隱藏容器
-        function populateSlotSelect(labels) {
-          var $wrap = $("#slot-wrapper");
-          var $sel = $("#slot-select");
-          $sel.empty();
-          if (!labels || !labels.length) {
-            $wrap.hide();
-            return;
-          }
-          labels.forEach(function (label, idx) {
-            $sel.append(
-              '<option value="' + idx + '">' + escapeHtml(label) + "</option>"
+          miniCharts = {};
+          // 若未設定授權金鑰 (pw)，顯示警告，但仍嘗試呼叫 API（開發時可觀察回傳）
+          if (!pwd) {
+            $("#lastUpdated").text(
+              "警告：未設定 pw（請在 pw.js 定義變數 pw），嘗試無授權請求"
             );
-          });
-          $wrap.show();
-        }
-
-        // 產生卡片內容（每個地區一張卡）
-        function renderCards() {
-          var $grid = $("#card-grid");
-          $grid.empty();
-
-          var locations = cached && cached.records && cached.records.location;
-          if (!Array.isArray(locations)) {
-            $grid.append(
-              '<div class="col-12 text-muted">無法解析資料格式</div>'
-            );
-            return;
+            console.warn("pw 未定義，將以空授權呼叫 API（可能會被拒絕）");
           }
-
-          // 目前所選時段索引（0/1/2）
-          var idx = parseInt($("#slot-select").val() || "0", 10) || 0;
-
-          locations.forEach(function (loc) {
-            // 1) 取出需要的欄位
-            var name = loc.locationName || "-";
-            var wxDesc = getParam(loc, "Wx", idx, "parameterName") || "-";
-            var wxCode = getParam(loc, "Wx", idx, "parameterValue"); // 可能為 undefined
-            var pop = getParam(loc, "PoP", idx, "parameterName");
-            var minT = getParam(loc, "MinT", idx, "parameterName");
-            var maxT = getParam(loc, "MaxT", idx, "parameterName");
-            var ci = getParam(loc, "CI", idx, "parameterName") || "-";
-            var t = getTime(loc, "Wx", idx) || {};
-
-            // 2) 基於描述/代碼選擇表情符號（不依賴外部圖庫）
-            var emoji = pickWeatherEmoji(wxDesc, wxCode);
-
-            // 3) 封裝顯示字串
-            var timeHtml =
-              escapeHtml(t.startTime || "") +
-              '<br><small class="text-muted">〜 ' +
-              escapeHtml(t.endTime || "") +
-              "</small>";
-            var popText =
-              pop !== undefined && pop !== null && pop !== "" ? pop + "%" : "-";
-            var minText = minT ? minT + "°C" : "-";
-            var maxText = maxT ? maxT + "°C" : "-";
-
-            // 4) 生成卡片 HTML
-            var card =
-              "" +
-              '<div class="col-12 col-md-6 col-lg-4">' +
-              '<div class="card h-100 shadow-sm">' +
-              '<div class="card-body">' +
-              '<div class="d-flex align-items-center mb-2">' +
-              '<div class="display-6 me-2" aria-hidden="true">' +
-              emoji +
-              "</div>" + // 圖示
-              "<div>" +
-              '<h5 class="card-title mb-0">' +
-              escapeHtml(name) +
-              "</h5>" + // 地區
-              '<div class="card-subtitle text-muted small">' +
-              timeHtml +
-              "</div>" + // 時段
-              "</div>" +
-              "</div>" +
-              '<p class="mb-3"><strong>天氣：</strong>' +
-              escapeHtml(wxDesc) +
-              "</p>" + // 天氣文字
-              '<div class="d-flex flex-wrap gap-2">' +
-              '<span class="badge text-bg-info">降雨 ' +
-              escapeHtml(popText) +
-              "</span>" +
-              '<span class="badge text-bg-success">最低 ' +
-              escapeHtml(minText) +
-              "</span>" +
-              '<span class="badge text-bg-danger">最高 ' +
-              escapeHtml(maxText) +
-              "</span>" +
-              '<span class="badge text-bg-secondary">' +
-              escapeHtml(ci) +
-              "</span>" +
-              "</div>" +
-              "</div>" +
-              "</div>" +
-              "</div>";
-
-            $grid.append(card);
-          });
-        }
-
-        // 取某元素在指定時段的參數值（parameter.parameterName / parameter.parameterValue）
-        function getParam(loc, elementName, idx, key) {
-          var el = (loc.weatherElement || []).find(function (e) {
-            return e.elementName === elementName;
-          });
-          var item = el && el.time && el.time[idx];
-          var val = item && item.parameter && item.parameter[key];
-          return val === undefined ? null : val;
-        }
-
-        // 取得某元素在指定時段的時間區間
-        function getTime(loc, elementName, idx) {
-          var el = (loc.weatherElement || []).find(function (e) {
-            return e.elementName === elementName;
-          });
-          return (el && el.time && el.time[idx]) || null;
-        }
-
-        // 僅在失敗時顯示錯誤
-        function showError(message) {
-          $("#status").html(
-            '<div class="alert alert-danger py-2 mb-0">' +
-              escapeHtml(message) +
-              "</div>"
-          );
-        }
-
-        // 轉義文字避免插入 HTML（基本 XSS 防護）
-        function escapeHtml(text) {
-          var div = document.createElement("div");
-          div.textContent = String(text == null ? "" : text);
-          return div.innerHTML;
-        }
-
-        // 依 Wx 描述/代碼挑選合適表情符號（簡單規則版）
-        function pickWeatherEmoji(desc, code) {
-          desc = String(desc || "");
-          // 關鍵字優先（中文關鍵字：雷、雨、雪、陰、多雲、晴）
-          if (/雷/.test(desc)) return "⛈️";
-          if (/雪/.test(desc)) return "🌨️";
-          if (/雨/.test(desc)) return "🌧️";
-          if (/陰/.test(desc)) return "☁️";
-          if (/多雲/.test(desc)) return "⛅";
-          if (/晴/.test(desc)) return "☀️";
-          // 若無法判斷，用代碼做粗略對應
-          var num = parseInt(code, 10);
-          if (!isNaN(num)) {
-            if (num >= 20 && num <= 24) return "⛈️"; // 雷陣雨族群
-            if (num >= 8 && num <= 19) return "🌧️"; // 陣雨/雨
-            if (num === 4) return "☁️"; // 多雲
-            if (num === 2 || num === 3) return "⛅"; // 晴時多雲/多雲時晴
-            if (num === 1) return "☀️"; // 晴
+          if ($.fn.DataTable && $.fn.DataTable.isDataTable("#myTable")) {
+            $("#myTable").DataTable().destroy();
           }
-          return "🌤️"; // 預設
+          $myTbody.empty();
+
+          var url =
+            "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=" +
+            pwd;
+          $.getJSON(url, function (response) {
+            var data = response.records.location;
+
+            // 排序（保留既有順序邏輯）
+            var cityOrder = [
+              "臺北市",
+              "新北市",
+              "桃園市",
+              "基隆市",
+              "新竹市",
+              "新竹縣",
+              "苗栗縣",
+              "臺中市",
+              "彰化縣",
+              "南投縣",
+              "雲林縣",
+              "嘉義市",
+              "嘉義縣",
+              "臺南市",
+              "高雄市",
+              "屏東縣",
+              "宜蘭縣",
+              "花蓮縣",
+              "臺東縣",
+              "澎湖縣",
+              "金門縣",
+              "連江縣",
+            ];
+            var orderMap = {};
+            for (var i = 0; i < cityOrder.length; i++) {
+              orderMap[cityOrder[i]] = i;
+            }
+            data.sort(function (a, b) {
+              var ia =
+                orderMap[a.locationName] == null
+                  ? 999
+                  : orderMap[a.locationName];
+              var ib =
+                orderMap[b.locationName] == null
+                  ? 999
+                  : orderMap[b.locationName];
+              return ia - ib;
+            });
+
+            // 設定三個時間欄位標題
+            var times =
+              (data[0] &&
+                data[0].weatherElement &&
+                data[0].weatherElement[2] &&
+                data[0].weatherElement[2].time) ||
+              [];
+            function getRangeText(t) {
+              return t ? t.startTime + "–" + t.endTime : "";
+            }
+            $("#thRange1").text(getRangeText(times[0]) || "區間 1");
+            $("#thRange2").text(getRangeText(times[1]) || "區間 2");
+            $("#thRange3").text(getRangeText(times[2]) || "區間 3");
+
+            // 建表內容
+            var html = "";
+            $.each(data, function (i, value) {
+              var wxT12 =
+                value.weatherElement[0].time[0].parameter.parameterName;
+              var wxT24 =
+                value.weatherElement[0].time[1].parameter.parameterName;
+              var wxT36 =
+                value.weatherElement[0].time[2].parameter.parameterName;
+
+              var start12 = value.weatherElement[0].time[0].startTime;
+              var start24 = value.weatherElement[0].time[1].startTime;
+              var start36 = value.weatherElement[0].time[2].startTime;
+              var folder12 = getIconFolder(start12);
+              var folder24 = getIconFolder(start24);
+              var folder36 = getIconFolder(start36);
+
+              var wxValue12 =
+                value.weatherElement[0].time[0].parameter.parameterValue;
+              var wxValue24 =
+                value.weatherElement[0].time[1].parameter.parameterValue;
+              var wxValue36 =
+                value.weatherElement[0].time[2].parameter.parameterValue;
+
+              var minT12 =
+                value.weatherElement[2].time[0].parameter.parameterName;
+              var minT24 =
+                value.weatherElement[2].time[1].parameter.parameterName;
+              var minT36 =
+                value.weatherElement[2].time[2].parameter.parameterName;
+
+              var maxT12 =
+                value.weatherElement[4].time[0].parameter.parameterName;
+              var maxT24 =
+                value.weatherElement[4].time[1].parameter.parameterName;
+              var maxT36 =
+                value.weatherElement[4].time[2].parameter.parameterName;
+
+              html +=
+                "<tr>" +
+                '<td class="sticky-col">' +
+                value.locationName +
+                "</td>" +
+                // 走勢欄位：迷你 canvas，id 使用索引避免特殊字元問題
+                '<td><canvas id="miniChart-' + i + '" width="180" height="60" aria-label="' +
+                value.locationName +
+                ' 走勢圖" role="img"></canvas></td>' +
+                '<td><div class="temp-range">' +
+                minT12 +
+                "-" +
+                maxT12 +
+                " &deg;C</div>" +
+                '<div class="d-flex align-items-center gap-2 mt-1 flex-wrap">' +
+                '<img class="weather-icon" src="./' +
+                folder12 +
+                "/" +
+                wxValue12 +
+                '.svg" alt="' +
+                wxT12 +
+                '" loading="lazy" decoding="async">' +
+                "<span>" +
+                wxT12 +
+                "</span>" +
+                "</div></td>" +
+                '<td><div class="temp-range">' +
+                minT24 +
+                "-" +
+                maxT24 +
+                " &deg;C</div>" +
+                '<div class="d-flex align-items-center gap-2 mt-1 flex-wrap">' +
+                '<img class="weather-icon" src="./' +
+                folder24 +
+                "/" +
+                wxValue24 +
+                '.svg" alt="' +
+                wxT24 +
+                '" loading="lazy" decoding="async">' +
+                "<span>" +
+                wxT24 +
+                "</span>" +
+                "</div></td>" +
+                '<td><div class="temp-range">' +
+                minT36 +
+                "-" +
+                maxT36 +
+                " &deg;C</div>" +
+                '<div class="d-flex align-items-center gap-2 mt-1 flex-wrap">' +
+                '<img class="weather-icon" src="./' +
+                folder36 +
+                "/" +
+                wxValue36 +
+                '.svg" alt="' +
+                wxT36 +
+                '" loading="lazy" decoding="async">' +
+                "<span>" +
+                wxT36 +
+                "</span>" +
+                "</div></td>" +
+                "</tr>";
+            });
+
+            $myTbody.append(html);
+
+            // 設定 locationMap
+            locationMap = {};
+            $.each(data, function (i, v) {
+              if (v && v.locationName) locationMap[v.locationName] = v;
+            });
+
+            // 為每列建立 mini chart
+            $.each(data, function (i, v) {
+              var cid = 'miniChart-' + i;
+              var canvas = document.getElementById(cid);
+              if (!canvas) return;
+              try {
+                var cd = buildChartDataFromLocation(v);
+                // 縮小版 datasets（不顯示圖例、去掉點）
+                var ds = cd.datasets.map(function(d){
+                  return {
+                    label: d.label,
+                    data: d.data,
+                    borderColor: d.borderColor,
+                    backgroundColor: d.backgroundColor,
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: false
+                  };
+                });
+                // 銷毀可能已存在的圖表
+                if (miniCharts[cid] && typeof miniCharts[cid].destroy === 'function') {
+                  miniCharts[cid].destroy();
+                }
+                miniCharts[cid] = new Chart(canvas.getContext('2d'), {
+                  type: 'line',
+                  data: { labels: cd.labels, datasets: ds },
+                  options: {
+                    responsive: false,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    scales: { x: { display: false }, y: { display: false } }
+                  }
+                });
+                // 互動：hover 顯示於主圖（暫時），click 選定城市
+                (function(cityName, cidLocal){
+                  var el = document.getElementById(cidLocal);
+                  if (!el) return;
+                  el.addEventListener('mouseenter', function(){
+                    // 暫存目前選取
+                    try { updateMainChartForCity(cityName, data); } catch(e){}
+                  });
+                  el.addEventListener('mouseleave', function(){
+                    try { updateMainChartForCity(currentSelectedCity, data); } catch(e){}
+                  });
+                  el.addEventListener('click', function(){
+                    try {
+                      // 設定下拉並觸發 change，這會更新 table 與主圖
+                      $('#citySelect').val(cityName).trigger('change');
+                      currentSelectedCity = cityName;
+                    } catch(e){}
+                  });
+                })(v.locationName, cid);
+              } catch (e) {
+                console.warn('建立 mini chart 失敗 for', cid, e);
+              }
+            });
+
+            // 計算並顯示 KPI（全台平均 / 今日最高 / 今日最低）
+            try {
+              var sumAvg = 0, cntAvg = 0, globalMax = -999, globalMin = 999;
+              for (var i = 0; i < data.length; i++) {
+                try {
+                  var times = data[i].weatherElement[2].time;
+                  var maxTimes = data[i].weatherElement[4].time;
+                  for (var j = 0; j < times.length; j++) {
+                    var mn = parseFloat(times[j].parameter.parameterName);
+                    var mx = parseFloat(maxTimes[j].parameter.parameterName);
+                    if (!isNaN(mn)) { sumAvg += mn; cntAvg++; globalMin = Math.min(globalMin, mn); }
+                    if (!isNaN(mx)) { globalMax = Math.max(globalMax, mx); }
+                  }
+                } catch (e) {}
+              }
+              var avgVal = cntAvg>0 ? +(sumAvg/cntAvg).toFixed(1) : '—';
+              $('#kpiAvgValue').text((avgVal!=='—'?avgVal+' °C':'—'));
+              $('#kpiHighValue').text(globalMax>-900? globalMax+' °C':'—');
+              $('#kpiLowValue').text(globalMin<900? globalMin+' °C':'—');
+            } catch (e) { console.warn('KPI 計算失敗', e); }
+
+            // 在行動裝置建立卡片列表（簡化資訊）
+            try {
+              var $cardList = $('#cardList');
+              $cardList.empty();
+              for (var i = 0; i < data.length; i++) {
+                var v = data[i];
+                var min0 = (v.weatherElement[2].time[0].parameter.parameterName);
+                var max0 = (v.weatherElement[4].time[0].parameter.parameterName);
+                var $card = $("<div class='kpi' tabindex='0'>")
+                  .append($('<div>').addClass('label').text(v.locationName))
+                  .append($('<div>').addClass('value').text(min0 + ' - ' + max0 + ' °C'))
+                  .append($('<div>').addClass('mt-2').append(
+                    $('<button type="button">').addClass('btn btn-sm btn-outline-primary').text('查看走勢').on('click', (function(city){ return function(){ $('#citySelect').val(city).trigger('change'); };})(v.locationName))
+                  ));
+                $cardList.append($card);
+              }
+            } catch (e) { console.warn('建立行動卡片失敗', e); }
+
+            // 若有至少一個城市，預設顯示第一個城市圖表；空值代表全台平均
+            var defaultLoc = data[0] || null;
+            if (defaultLoc) {
+              var cd = buildChartDataFromLocation(defaultLoc);
+              createOrUpdateChart(cd.labels, cd.datasets);
+            }
+
+            // 初始化 DataTable
+            var table = $("#myTable").DataTable({
+              language: {
+                url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/zh-HANT.json",
+              },
+              pageLength: 25,
+              lengthMenu: [10, 25, 50, 100],
+              order: [],
+              deferRender: true,
+              dom: "frtip",
+            });
+
+            // 取得不重複的城市列表
+            var allCities = [];
+            $.each(data, function (i, v) {
+              if (
+                v.locationName &&
+                $.inArray(v.locationName, allCities) === -1
+              ) {
+                allCities.push(v.locationName);
+              }
+            });
+
+            // 填入 citySelect
+            var $citySelect = $("#citySelect");
+            if ($citySelect.children("option").length === 1) {
+              $.each(allCities, function (i, c) {
+                $citySelect.append($("<option>").val(c).text(c));
+              });
+            }
+
+            // 產生快速按鈕（熱門城市）
+            function createQuickButtons(list) {
+              var $q = $("#quickCityButtons");
+              $q.empty();
+              for (var i = 0; i < Math.min(6, list.length); i++) {
+                (function (city) {
+                  var $b = $('<button type="button">')
+                    .addClass("btn btn-sm btn-outline-primary me-1 mb-1")
+                    .text(city);
+                  $b.on("click", function () {
+                    $citySelect.val(city).trigger("change");
+                  });
+                  $q.append($b);
+                })(list[i]);
+              }
+            }
+
+            // 初始 quick buttons（全部城市前 6 個）
+            createQuickButtons(allCities);
+
+            // 根據地區填入城市（更容錯）：優先使用正規化的精準匹配，若無結果則以 substring fallback
+            $("#regionSelect")
+              .off("change")
+              .on("change", function () {
+                var region = $(this).val();
+                $citySelect
+                  .empty()
+                  .append($("<option>").val("").text("全部城市"));
+                var list = [];
+                if (!region) {
+                  list = allCities.slice();
+                } else {
+                  var rlist = regionMap[region] || [];
+                  function norm(s) {
+                    return String(s || "")
+                      .replace(/\s+/g, "")
+                      .trim();
+                  }
+                  var rnorm = rlist.map(norm);
+                  // 正規化精準匹配
+                  for (var i = 0; i < allCities.length; i++) {
+                    if (rnorm.indexOf(norm(allCities[i])) !== -1)
+                      list.push(allCities[i]);
+                  }
+                  // fallback: 若沒有任何匹配，使用 substring 檢查
+                  if (list.length === 0) {
+                    for (var i = 0; i < allCities.length; i++) {
+                      for (var k = 0; k < rlist.length; k++) {
+                        if (
+                          allCities[i].indexOf(rlist[k]) !== -1 ||
+                          rlist[k].indexOf(allCities[i]) !== -1
+                        ) {
+                          if ($.inArray(allCities[i], list) === -1)
+                            list.push(allCities[i]);
+                        }
+                      }
+                    }
+                  }
+                }
+                // 排序並填入
+                list.sort();
+                for (var j = 0; j < list.length; j++) {
+                  $citySelect.append($("<option>").val(list[j]).text(list[j]));
+                }
+                createQuickButtons(list);
+              });
+
+            // citySelect change -> 篩選表格（第一欄城市）
+            $citySelect.off("change").on("change", function () {
+              var val = $(this).val();
+              currentSelectedCity = val || null;
+              if (!val) {
+                table.column(0).search("").draw();
+                // 顯示全台平均（將三個時段平均化）
+                updateMainChartForCity(null, data);
+              } else {
+                table
+                  .column(0)
+                  .search("^" + escapeRegex(val) + "$", true, false)
+                  .draw();
+                // 顯示該城市圖表
+                updateMainChartForCity(val, data);
+              }
+            });
+          })
+            .fail(function (jqxhr, textStatus, error) {
+              $("#loading").addClass("d-none");
+              $("#lastUpdated").text("API 請求失敗：" + (textStatus || error));
+              console.error("API 请求失败:", textStatus, error, jqxhr);
+            })
+            .always(function () {
+              $("#loading").addClass("d-none");
+              $("#lastUpdated").text(new Date().toLocaleString());
+            });
         }
 
+        // 首次載入並綁定重新載入按鈕
+        loadData();
+        $("#btnReload").on("click", loadData);
       });
     </script>
   </body>
