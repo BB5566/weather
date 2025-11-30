@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>台灣天氣預報 36 小時 - Weather Taiwan</title>
     <!-- 載入bs5 css -->
     <link
       rel="stylesheet"
@@ -30,38 +30,80 @@
         --brand-accent: #E53935;
         --muted: #6c757d;
         --card-shadow: 0 6px 18px rgba(16,24,40,0.06);
+        --gradient-warm: linear-gradient(135deg, #FF9800 0%, #F44336 100%);
+        --gradient-cool: linear-gradient(135deg, #2196F3 0%, #00BCD4 100%);
       }
       body {
         font-family: "Noto Sans TC", system-ui, -apple-system, Segoe UI, Roboto,
           "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial,
           "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
           "Noto Color Emoji", sans-serif;
+        background: linear-gradient(180deg, #f0f4f8 0%, #e8ecf1 100%);
+        min-height: 100vh;
+      }
+      /* Header Hero */
+      .weather-hero {
+        background: var(--gradient-cool);
+        color: white;
+        padding: 2rem 0;
+        margin-bottom: 1.5rem;
+        border-radius: 0 0 24px 24px;
+        text-align: center;
+      }
+      .weather-hero h1 {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+      .weather-hero p {
+        opacity: 0.9;
+        margin-bottom: 0;
       }
       /* KPI cards */
-      .kpi-row { display:flex; gap:12px; margin-bottom:12px; }
-      .kpi { flex:1; padding:12px; border-radius:8px; background:#fff; box-shadow:var(--card-shadow); }
-      .kpi .value { font-size:1.25rem; font-weight:700; color:var(--brand-primary); }
-      .kpi .label { font-size:0.85rem; color:var(--muted); }
+      .kpi-row { display:flex; gap:12px; margin-bottom:16px; padding: 0 8px; }
+      .kpi {
+        flex:1;
+        padding:16px;
+        border-radius:12px;
+        background:#fff;
+        box-shadow:var(--card-shadow);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        text-align: center;
+      }
+      .kpi:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(16,24,40,0.1);
+      }
+      .kpi .value { font-size:1.5rem; font-weight:700; color:var(--brand-primary); }
+      .kpi .label { font-size:0.85rem; color:var(--muted); margin-top: 4px; }
+      .kpi#kpiHigh .value { color: #F44336; }
+      .kpi#kpiLow .value { color: #2196F3; }
       /* mini chart visuals */
-      canvas[id^="miniChart-"]{ cursor:pointer; display:block; }
+      canvas[id^="miniChart-"]{ cursor:pointer; display:block; border-radius: 6px; }
+      canvas[id^="miniChart-"]:hover { background: rgba(25,118,210,0.05); }
       canvas[id^="miniChart-"]:focus{ outline:3px solid rgba(25,118,210,0.12); }
       /* responsive: on small screens hide table and show card list */
-      .card-list { display:none; gap:12px; }
+      .card-list { display:none; gap:12px; padding: 0 8px; }
       @media (max-width: 768px) {
         .table-responsive { display:none !important; }
         .card-list { display:flex; flex-direction:column; }
+        .kpi-row { flex-wrap: wrap; }
+        .kpi { min-width: calc(50% - 6px); flex: 1 1 calc(50% - 6px); }
+        .weather-hero { border-radius: 0 0 16px 16px; padding: 1.5rem 1rem; }
+        .weather-hero h1 { font-size: 1.5rem; }
       }
       .weather-icon {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         vertical-align: text-bottom;
       }
       .temp-range {
         font-weight: 600;
         display: inline-block;
-        padding: 0.15rem 0.5rem;
+        padding: 0.25rem 0.75rem;
         border-radius: 9999px;
-        background-color: var(--bs-secondary-bg);
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        color: #1565C0;
+        font-size: 0.95rem;
       }
       /* 黏性表頭與第一欄（於 .table-responsive 容器內生效） */
       .table-responsive thead th.sticky-top {
@@ -76,15 +118,60 @@
         left: 0;
         z-index: 3;
         background: var(--bs-body-bg);
+        font-weight: 600;
       }
       .table-responsive thead th.sticky-col {
         z-index: 6;
+      }
+      /* Card Improvements */
+      .card {
+        border: none;
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .card-header {
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        padding: 1rem 1.25rem;
+      }
+      /* Chart Container */
+      #tempChart {
+        max-height: 250px;
+      }
+      /* Quick City Buttons */
+      #quickCityButtons .btn {
+        border-radius: 20px;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.8rem;
+      }
+      /* Loading State */
+      #loading {
+        padding: 2rem;
+        text-align: center;
+      }
+      /* Footer */
+      .weather-footer {
+        text-align: center;
+        padding: 1.5rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .weather-footer a {
+        color: var(--brand-primary);
+        text-decoration: none;
       }
     </style>
   </head>
 
   <body>
-    <div class="container mt-4">
+    <!-- Hero Section -->
+    <div class="weather-hero">
+      <div class="container">
+        <h1>🌤️ 台灣天氣預報</h1>
+        <p>36 小時天氣資料 · 中央氣象署開放資料</p>
+      </div>
+    </div>
+
+    <div class="container">
       <!-- 簡潔城市選擇：地區 + 城市 + 快速按鈕 -->
       <div class="mb-3 d-flex align-items-center gap-2">
         <label for="regionSelect" class="form-label visually-hidden"
@@ -169,6 +256,11 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="weather-footer">
+      <p>資料來源：<a href="https://opendata.cwa.gov.tw/" target="_blank" rel="noopener">中央氣象署開放資料平臺</a></p>
     </div>
 
     <!-- 載入bs5 js -->
