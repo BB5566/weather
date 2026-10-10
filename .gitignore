@@ -6,9 +6,15 @@ pw.js
 node_modules/
 dist/
 .DS_Store
-Thumbs.db# 避免把機敏資訊（API 金鑰等）提交到 GitHub
+Thumbs.db
+
+# 避免把機敏資訊（API 金鑰等）提交到 GitHub
 config.local.js
 api.md
+
 # 常見環境變數檔
 .env
 .env.*
+
+# IDE settings
+.vscode
